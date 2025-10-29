@@ -3,13 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Polar H10 Heart Rate Monitor</title>
+  <title>Heart Rate Monitor</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { margin: 0; padding: 0; }
+    body { 
+      margin: 0; 
+      padding: 0;
+      overscroll-behavior: none;
+    }
+    * {
+      -webkit-tap-highlight-color: transparent;
+    }
   </style>
 </head>
 <body>
@@ -18,22 +25,21 @@
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
-    // Lucide Icons als einfache SVGs
-    const Heart = ({ className }) => (
-      <svg className={className} fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-      </svg>
-    );
-
     const Bluetooth = ({ className }) => (
       <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path d="m7 7 10 10-5 5V2l5 5L7 17"/>
       </svg>
     );
 
-    const Activity = ({ className }) => (
+    const Volume2 = ({ className }) => (
       <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+        <path d="M11 5 6 9H2v6h4l5 4V5zM19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+      </svg>
+    );
+
+    const VolumeX = ({ className }) => (
+      <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M11 5 6 9H2v6h4l5 4V5zM23 9l-6 6M17 9l6 6"/>
       </svg>
     );
 
@@ -45,7 +51,6 @@
       const [minHR, setMinHR] = useState(0);
       const [maxHR, setMaxHR] = useState(0);
       const [soundEnabled, setSoundEnabled] = useState(true);
-      const [debugLog, setDebugLog] = useState([]);
       
       const canvasRef = useRef(null);
       const deviceRef = useRef(null);
@@ -56,12 +61,6 @@
       const lastBeepTimeRef = useRef(Date.now());
       const beepAnimationFrameRef = useRef(null);
       const scrollXRef = useRef(0);
-      const previousScrollXRef = useRef(0);
-
-      const addLog = (message) => {
-        console.log(message);
-        setDebugLog(prev => [...prev, `${new Date().toLocaleTimeString()}: ${message}`].slice(-10));
-      };
 
       useEffect(() => {
         return () => {
@@ -88,7 +87,6 @@
           }
 
           const now = ctx.currentTime;
-          
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           
@@ -112,7 +110,6 @@
         }
       };
 
-      // Kontinuierlicher Beep-Loop mit dynamischer Anpassung
       useEffect(() => {
         if (!connected || heartRate === 0 || !soundEnabled) {
           if (beepAnimationFrameRef.current) {
@@ -124,12 +121,11 @@
 
         const beepLoop = () => {
           const now = Date.now();
-          const timeSinceLastBeep = now - lastBeepTimeRef.current;
+          const timeSinceLastBeat = now - lastBeepTimeRef.current;
           const beatInterval = 60000 / heartRate;
           
-          if (timeSinceLastBeep >= beatInterval) {
+          if (timeSinceLastBeat >= beatInterval) {
             playBeep();
-            addLog(`💓 BEEP bei ${heartRate} BPM`);
           }
           
           beepAnimationFrameRef.current = requestAnimationFrame(beepLoop);
@@ -146,55 +142,37 @@
 
       const connectToDevice = async () => {
         try {
-          addLog('Starte Verbindung...');
-          
           if (!navigator.bluetooth) {
-            addLog('FEHLER: Web Bluetooth nicht verfügbar');
             alert('Web Bluetooth wird nicht unterstützt! Bitte Chrome oder Edge verwenden.');
             return;
           }
 
-          addLog('Öffne Geräteauswahl...');
-          
           const device = await navigator.bluetooth.requestDevice({
             filters: [{ services: ['heart_rate'] }],
             optionalServices: ['heart_rate']
           });
 
-          addLog(`Gerät ausgewählt: ${device.name || device.id}`);
           deviceRef.current = device;
           
           device.addEventListener('gattserverdisconnected', () => {
-            addLog('Gerät getrennt');
             setConnected(false);
             setHeartRate(0);
             setHistory([]);
             trailPointsRef.current = [];
           });
 
-          addLog('Verbinde mit GATT Server...');
           const server = await device.gatt.connect();
-          addLog('GATT Server verbunden');
-          
-          addLog('Suche Heart Rate Service...');
           const service = await server.getPrimaryService('heart_rate');
-          addLog('Heart Rate Service gefunden');
-          
-          addLog('Suche Heart Rate Measurement Characteristic...');
           const characteristic = await service.getCharacteristic('heart_rate_measurement');
-          addLog('Characteristic gefunden');
           
           characteristicRef.current = characteristic;
           
-          addLog('Starte Notifications...');
           await characteristic.startNotifications();
           characteristic.addEventListener('characteristicvaluechanged', handleHeartRateChange);
           
-          addLog('✓ ERFOLGREICH VERBUNDEN!');
           setConnected(true);
           lastBeepTimeRef.current = Date.now();
         } catch (error) {
-          addLog(`FEHLER: ${error.name} - ${error.message}`);
           console.error('Verbindungsfehler:', error);
           alert('Verbindung fehlgeschlagen: ' + error.message);
         }
@@ -211,7 +189,6 @@
           hr = value.getUint16(1, true);
         }
         
-        addLog(`💓 Herzfrequenz: ${hr} BPM`);
         setHeartRate(hr);
         
         setHistory(prev => {
@@ -234,13 +211,18 @@
         
         const phase = timeSinceLastBeat / beatInterval;
         
-        // Spike: kurz runter, dann hoch rauf
-        if (phase < 0.03) {
-          const t = phase / 0.03;
+        if (phase < 0.02) {
+          const t = phase / 0.02;
+          return -0.2 * Math.sin(t * Math.PI);
+        } else if (phase < 0.1) {
+          const t = (phase - 0.02) / 0.08;
+          return Math.sin(t * Math.PI) * 1.2;
+        } else if (phase < 0.15) {
+          const t = (phase - 0.1) / 0.05;
           return -0.3 * Math.sin(t * Math.PI);
-        } else if (phase < 0.08) {
-          const t = (phase - 0.03) / 0.05;
-          return Math.sin(t * Math.PI) * 1.0;
+        } else if (phase < 0.25) {
+          const t = (phase - 0.15) / 0.1;
+          return 0.15 * Math.sin(t * Math.PI);
         } else {
           return 0;
         }
@@ -256,80 +238,86 @@
         const centerY = height / 2;
 
         const animate = () => {
-          // Komplett schwarz
-          ctx.fillStyle = '#000000';
+          // Dunkler Hintergrund mit leichtem Gradient
+          const gradient = ctx.createLinearGradient(0, 0, 0, height);
+          gradient.addColorStop(0, '#0a0e1a');
+          gradient.addColorStop(1, '#0f1419');
+          ctx.fillStyle = gradient;
           ctx.fillRect(0, 0, width, height);
 
-          // SEHR dezentes Gitter
-          ctx.strokeStyle = '#0a0a0a';
+          // Subtiles Gitter
+          ctx.strokeStyle = 'rgba(100, 150, 255, 0.08)';
           ctx.lineWidth = 0.5;
           
-          for (let x = 0; x < width; x += 50) {
+          for (let x = 0; x < width; x += 40) {
             ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, height);
             ctx.stroke();
           }
           
-          for (let y = 0; y < height; y += 50) {
+          for (let y = 0; y < height; y += 40) {
             ctx.beginPath();
             ctx.moveTo(0, y);
             ctx.lineTo(width, y);
             ctx.stroke();
           }
 
-          // Mittellinie - kaum sichtbar
-          ctx.strokeStyle = '#0d0d0d';
+          // Mittellinie
+          ctx.strokeStyle = 'rgba(100, 150, 255, 0.15)';
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(0, centerY);
           ctx.lineTo(width, centerY);
           ctx.stroke();
 
-          // KONSTANTE Scrollgeschwindigkeit
-          previousScrollXRef.current = scrollXRef.current;
-          scrollXRef.current += 3;
+          scrollXRef.current += 4;
           
-          // Wenn Punkt am Rand ankommt, Trail clearen
           if (scrollXRef.current > width) {
             scrollXRef.current = 0;
             trailPointsRef.current = [];
           }
 
-          // Berechne aktuelle Pulse-Position
           const now = Date.now();
           const timeSinceLastBeat = now - lastBeepTimeRef.current;
           const beatInterval = heartRate > 0 ? (60000 / heartRate) : 0;
           
           const pulseHeight = getPulseHeight(timeSinceLastBeat, beatInterval);
-          const y = centerY - pulseHeight * 80;
+          const y = centerY - pulseHeight * 100;
 
-          // Punkt zum Trail hinzufügen
           trailPointsRef.current.push({ x: scrollXRef.current, y: y });
           
-          // Trail-Länge begrenzen
-          const maxTrailLength = Math.floor(width / 3);
+          const maxTrailLength = Math.floor(width / 4);
           while (trailPointsRef.current.length > maxTrailLength) {
             trailPointsRef.current.shift();
           }
 
-          // Trail zeichnen mit Fadeout-Effekt
+          // EKG-Linie mit Glow-Effekt
           if (trailPointsRef.current.length > 1) {
             for (let i = 0; i < trailPointsRef.current.length - 1; i++) {
               const point = trailPointsRef.current[i];
               const nextPoint = trailPointsRef.current[i + 1];
               
-              // Berechne Entfernung vom aktuellen Punkt
               const distanceFromCurrent = scrollXRef.current - point.x;
-              
-              // Opacity basierend auf Entfernung
-              const maxDistance = width / 3;
+              const maxDistance = width / 4;
               const opacity = Math.max(0, 1 - (distanceFromCurrent / maxDistance));
               
-              ctx.strokeStyle = `rgba(0, 255, 0, ${opacity})`;
+              // Äußerer Glow
+              ctx.strokeStyle = `rgba(59, 130, 246, ${opacity * 0.3})`;
+              ctx.lineWidth = 6;
+              ctx.shadowBlur = 15;
+              ctx.shadowColor = `rgba(59, 130, 246, ${opacity * 0.5})`;
+              
+              ctx.beginPath();
+              ctx.moveTo(point.x, point.y);
+              ctx.lineTo(nextPoint.x, nextPoint.y);
+              ctx.stroke();
+              
+              // Innere Linie
+              ctx.strokeStyle = `rgba(96, 165, 250, ${opacity})`;
               ctx.lineWidth = 3;
-              ctx.shadowBlur = 8 * opacity;
-              ctx.shadowColor = `rgba(0, 255, 0, ${opacity})`;
+              ctx.shadowBlur = 10;
+              ctx.shadowColor = `rgba(96, 165, 250, ${opacity})`;
               
               ctx.beginPath();
               ctx.moveTo(point.x, point.y);
@@ -338,13 +326,20 @@
             }
           }
 
-          // Aktueller Punkt (leuchtend)
-          ctx.shadowBlur = 20;
-          ctx.shadowColor = '#00ff00';
-          ctx.fillStyle = '#00ff00';
+          // Aktueller Punkt
+          ctx.shadowBlur = 25;
+          ctx.shadowColor = '#60a5fa';
+          ctx.fillStyle = '#60a5fa';
           
           ctx.beginPath();
-          ctx.arc(scrollXRef.current, y, 5, 0, Math.PI * 2);
+          ctx.arc(scrollXRef.current, y, 6, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Innerer heller Kern
+          ctx.shadowBlur = 15;
+          ctx.fillStyle = '#93c5fd';
+          ctx.beginPath();
+          ctx.arc(scrollXRef.current, y, 3, 0, Math.PI * 2);
           ctx.fill();
 
           animationRef.current = requestAnimationFrame(animate);
@@ -360,8 +355,6 @@
       }, [heartRate, connected]);
 
       const disconnect = () => {
-        addLog('Trenne Verbindung...');
-        
         if (beepAnimationFrameRef.current) {
           cancelAnimationFrame(beepAnimationFrameRef.current);
         }
@@ -369,7 +362,6 @@
         if (characteristicRef.current) {
           try {
             characteristicRef.current.stopNotifications();
-            addLog('Notifications gestoppt');
           } catch (e) {
             console.error('Stop notifications error:', e);
           }
@@ -377,7 +369,6 @@
         
         if (deviceRef.current && deviceRef.current.gatt.connected) {
           deviceRef.current.gatt.disconnect();
-          addLog('GATT getrennt');
         }
         
         setConnected(false);
@@ -387,119 +378,85 @@
         setMinHR(0);
         setMaxHR(0);
         trailPointsRef.current = [];
-        addLog('Verbindung getrennt');
       };
 
       return (
-        <div className="min-h-screen bg-black text-green-500 font-mono p-4 flex flex-col">
-          <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col">
-            <div className="flex items-center justify-between mb-4 border-b-2 border-green-500 pb-3">
-              <div className="flex items-center gap-3">
-                <Activity className="w-8 h-8" />
-                <div>
-                  <h1 className="text-2xl font-bold">CARDIAC MONITOR v4.2</h1>
-                  <p className="text-sm text-green-400">Polar H10 Interface</p>
-                </div>
-              </div>
-              
-              {!connected ? (
-                <button
-                  onClick={connectToDevice}
-                  className="flex items-center gap-2 bg-green-900 hover:bg-green-800 px-6 py-3 rounded border-2 border-green-500 transition-colors cursor-pointer"
-                >
-                  <Bluetooth className="w-5 h-5" />
-                  CONNECT DEVICE
-                </button>
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-3 flex flex-col">
+          {/* Header Buttons */}
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className="flex-1 flex items-center justify-center gap-2 bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 px-4 py-3 rounded-xl active:scale-95 transition-transform shadow-lg"
+            >
+              {soundEnabled ? (
+                <Volume2 className="w-5 h-5 text-blue-400" />
               ) : (
-                <button
-                  onClick={disconnect}
-                  className="flex items-center gap-2 bg-red-900 hover:bg-red-800 px-6 py-3 rounded border-2 border-red-500 text-red-500 transition-colors cursor-pointer"
-                >
-                  DISCONNECT
-                </button>
+                <VolumeX className="w-5 h-5 text-slate-500" />
+              )}
+              <span className="text-sm font-medium">{soundEnabled ? "Sound On" : "Sound Off"}</span>
+            </button>
+            
+            {!connected ? (
+              <button
+                onClick={connectToDevice}
+                className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-xl active:scale-95 transition-all shadow-lg shadow-blue-500/30"
+              >
+                <Bluetooth className="w-5 h-5" />
+                <span className="text-sm font-semibold">Connect</span>
+              </button>
+            ) : (
+              <button
+                onClick={disconnect}
+                className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 px-4 py-3 rounded-xl active:scale-95 transition-all shadow-lg shadow-red-500/30"
+              >
+                <span className="text-sm font-semibold">Disconnect</span>
+              </button>
+            )}
+          </div>
+
+          {/* Heart Rate Display */}
+          <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 mb-4 shadow-2xl">
+            <div className="text-center">
+              <div className="text-8xl font-bold tabular-nums bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent mb-2">
+                {heartRate || '--'}
+              </div>
+              <div className="text-2xl font-medium text-slate-400">BPM</div>
+              {connected && (
+                <div className="mt-2 flex items-center justify-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                  <span className="text-xs text-green-400 font-medium">LIVE</span>
+                </div>
               )}
             </div>
+          </div>
 
-            <div className="mb-3 flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <div className={connected ? "w-3 h-3 rounded-full bg-green-500 animate-pulse" : "w-3 h-3 rounded-full bg-gray-700"} />
-                <span className="text-sm">{connected ? "CONNECTED" : "DISCONNECTED"}</span>
-              </div>
-              
-              <button
-                onClick={() => setSoundEnabled(!soundEnabled)}
-                className="text-sm px-3 py-1 border border-green-500 rounded hover:bg-green-900 transition-colors cursor-pointer"
-              >
-                SOUND: {soundEnabled ? "ON" : "OFF"}
-              </button>
+          {/* EKG Display */}
+          <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-4 mb-4 shadow-2xl flex-1 min-h-[300px] flex flex-col">
+            <div className="text-xs font-medium text-slate-400 mb-2 uppercase tracking-wider">ECG Monitor</div>
+            <div className="flex-1 rounded-xl overflow-hidden">
+              <canvas
+                ref={canvasRef}
+                width={1600}
+                height={600}
+                className="w-full h-full"
+              />
             </div>
+          </div>
 
-            {debugLog.length > 0 && (
-              <div className="mb-3 bg-gray-900 border border-yellow-500 p-2 rounded text-xs text-yellow-400 max-h-32 overflow-y-auto">
-                <div className="font-bold mb-1">DEBUG LOG:</div>
-                {debugLog.map((log, i) => (
-                  <div key={i}>{log}</div>
-                ))}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
-              <div className="md:col-span-3 bg-gray-900 border-2 border-green-500 p-4 rounded">
-                <div className="text-xs mb-1">HEART RATE</div>
-                <div className="flex items-baseline gap-2">
-                  <div className="text-6xl font-bold tabular-nums">
-                    {heartRate || '--'}
-                  </div>
-                  <div className="text-2xl mb-1">BPM</div>
-                  {connected && heartRate > 0 && (
-                    <Heart className="w-10 h-10 ml-3 text-red-500 animate-pulse" />
-                  )}
-                </div>
-              </div>
-
-              <div className="bg-gray-900 border-2 border-green-500 p-4 rounded space-y-3">
-                <div>
-                  <div className="text-xs text-green-400">AVG</div>
-                  <div className="text-2xl font-bold">{avgHR || '--'}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-green-400">MIN</div>
-                  <div className="text-2xl font-bold">{minHR || '--'}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-green-400">MAX</div>
-                  <div className="text-2xl font-bold">{maxHR || '--'}</div>
-                </div>
-              </div>
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-gradient-to-br from-slate-800/60 to-slate-900/60 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 text-center shadow-lg">
+              <div className="text-xs text-slate-400 mb-1 uppercase tracking-wide">Avg</div>
+              <div className="text-3xl font-bold text-blue-400">{avgHR || '--'}</div>
             </div>
-
-            <div className="bg-gray-900 border-2 border-green-500 rounded p-3 flex-1 flex flex-col min-h-0">
-              <div className="text-xs mb-2">PULSE VISUALIZATION</div>
-              <div className="flex-1 min-h-0">
-                <canvas
-                  ref={canvasRef}
-                  width={1800}
-                  height={500}
-                  className="w-full h-full border border-green-700 rounded"
-                />
-              </div>
-              <div className="text-xs text-green-400 mt-2">
-                {connected ? 'MONITORING...' : 'NO SIGNAL'}
-              </div>
+            <div className="bg-gradient-to-br from-slate-800/60 to-slate-900/60 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 text-center shadow-lg">
+              <div className="text-xs text-slate-400 mb-1 uppercase tracking-wide">Min</div>
+              <div className="text-3xl font-bold text-cyan-400">{minHR || '--'}</div>
             </div>
-
-            {!connected && (
-              <div className="mt-3 bg-gray-900 border border-green-700 p-3 rounded text-xs">
-                <p className="mb-1">📡 ANWEISUNGEN:</p>
-                <ul className="space-y-1 text-green-400">
-                  <li>1. Stelle sicher, dass dein Polar H10 eingeschaltet ist (Hautkontakt)</li>
-                  <li>2. Aktiviere Bluetooth an deinem Computer</li>
-                  <li>3. Verwende Chrome oder Edge Browser</li>
-                  <li>4. Klicke auf "CONNECT DEVICE"</li>
-                  <li>5. Wähle deinen Polar H10 aus der Liste</li>
-                </ul>
-              </div>
-            )}
+            <div className="bg-gradient-to-br from-slate-800/60 to-slate-900/60 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 text-center shadow-lg">
+              <div className="text-xs text-slate-400 mb-1 uppercase tracking-wide">Max</div>
+              <div className="text-3xl font-bold text-purple-400">{maxHR || '--'}</div>
+            </div>
           </div>
         </div>
       );
